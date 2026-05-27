@@ -202,6 +202,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .er-status{width:44px;flex-shrink:0;font-size:11px;font-weight:500}
 .er-info{flex:1;line-height:1.6}
 .er-scene{color:var(--text2);font-size:12px} .er-vo{color:var(--text);font-weight:500;font-size:12px} .er-memo{color:var(--hi);font-size:11px}
+.export-checklist{padding:4px 0}
+.export-check-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.export-check-row:last-child{border-bottom:none}
+.export-check-row:active{background:var(--surface2)}
+.export-check-box{width:18px;height:18px;border:2px solid var(--border2);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:11px}
+.export-check-row.checked .export-check-box{background:var(--text);border-color:var(--text);color:#fff}
+.export-check-name{flex:1;font-size:13px;font-weight:500;color:var(--text)}
+.export-check-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .export-btn{width:100%;padding:12px;border:none;border-radius:var(--r);background:var(--text);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);margin-bottom:8px;transition:opacity .18s}
 .export-btn:active{opacity:.7}
 .export-btn.secondary{background:var(--surface);color:var(--text);border:1px solid var(--border2)}
@@ -217,13 +225,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 
 /* ── ACTOR-ONLY MODE (URL ?mode=actor) ── */
 body.actor-only .topbar,
-body.actor-only .stats-bar,
 body.actor-only .legend,
 body.actor-only .tabs,
 body.actor-only .bottom-nav,
 body.actor-only .sync-badge{display:none!important}
 body.actor-only #view-actor{display:block!important;padding-bottom:20px}
-body.actor-only .actor-header{padding-top:24px}
+body.actor-only .actor-header{padding-top:16px}
+
+/* 演員稿 project bar */
+.actor-proj-bar{display:flex;overflow-x:auto;gap:6px;padding:12px 14px 8px;background:var(--surface);border-bottom:1px solid var(--border);scrollbar-width:none;position:sticky;top:0;z-index:50}
+.actor-proj-bar::-webkit-scrollbar{display:none}
+.actor-proj-tab{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .18s;white-space:nowrap}
+.actor-proj-tab.active{background:var(--text);color:#fff;border-color:var(--text)}
 </style>
 </head>
 <body>
@@ -262,6 +275,7 @@ body.actor-only .actor-header{padding-top:24px}
 
 <!-- ACTOR -->
 <div class="view" id="view-actor">
+  <div id="actorProjBar" class="actor-proj-bar" style="display:none"></div>
   <div class="actor-header">
     <div class="actor-header-label">ACTOR MODE</div>
     <div class="actor-header-title" id="actorTitle">#安永實習中 · 外勤指南！</div>
@@ -315,13 +329,22 @@ body.actor-only .actor-header{padding-top:24px}
   <div class="export-view">
     <div class="export-card">
       <div class="export-header">
-        <div><div class="export-title">剪輯指引單</div><div class="export-sub" id="exportDate"></div></div>
-        <div class="export-sub" id="exportStat"></div>
+        <div class="export-title">選擇要匯出的影片</div>
+        <div class="export-sub" id="exportSelCount">已選 0 支</div>
       </div>
-      <div class="export-body" id="exportBody"></div>
+      <div class="export-checklist" id="exportChecklist"></div>
     </div>
-    <button class="export-btn" onclick="copyTSV()">複製剪輯指引（貼進 Google Sheets）</button>
-    <button class="export-btn secondary" onclick="copyActorLink()">複製演員稿連結</button>
+    <div id="exportPreviewCard" style="display:none">
+      <div class="export-card">
+        <div class="export-header">
+          <div><div class="export-title">剪輯指引預覽</div><div class="export-sub" id="exportDate"></div></div>
+          <div class="export-sub" id="exportStat"></div>
+        </div>
+        <div class="export-body" id="exportBody"></div>
+      </div>
+    </div>
+    <button class="export-btn" id="exportTsvBtn" onclick="copyTSV()" style="display:none">複製剪輯指引（貼進 Google Sheets）</button>
+    <button class="export-btn secondary" id="exportActorBtn" onclick="copyActorLink()" style="display:none">複製演員稿連結</button>
   </div>
 </div>
 
@@ -539,13 +562,36 @@ function updateProgress() {
   document.getElementById('progressLabel').textContent = `${done}/${shots.length}`;
 }
 
-// ══ ACTOR ══
-function renderActor() {
-  const shots = getCurrentShots();
-  if (shots.length===0) { document.getElementById('actorList').innerHTML='<div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:13px">尚無腳本</div>'; return; }
+// ══ ACTOR MULTI-PROJ ══
+let actorProjects = null; // 演員稿模式下的獨立資料
+let actorCurrent  = 0;
+
+function renderActor(projOverride) {
+  const data   = actorProjects || projects;
+  const idx    = projOverride !== undefined ? projOverride : (actorProjects ? actorCurrent : currentProj);
+  const proj   = data[idx];
+  const shots  = proj ? proj.shots : [];
+  const bar    = document.getElementById('actorProjBar');
+
+  // proj bar：多支時顯示
+  if (data.length > 1) {
+    bar.style.display = 'flex';
+    bar.innerHTML = data.map((p,i) =>
+      `<div class="actor-proj-tab${i===idx?' active':''}" onclick="switchActorProj(${i})">${p.title}</div>`
+    ).join('');
+  } else {
+    bar.style.display = 'none';
+  }
+
+  document.getElementById('actorTitle').textContent = proj ? proj.title : '';
+
+  if (!shots.length) {
+    document.getElementById('actorList').innerHTML = '<div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:13px">尚無腳本</div>';
+    return;
+  }
   document.getElementById('actorList').innerHTML = shots.map((s,i) => {
-    const isBroll = s.type==='B-roll';
-    const divider = i>0 ? `<div class="actor-divider"><span>C${String(shots[i-1].id).padStart(2,'0')} ↓</span></div>` : '';
+    const isBroll  = s.type==='B-roll';
+    const divider  = i>0 ? `<div class="actor-divider"><span>C${String(shots[i-1].id).padStart(2,'00')} ↓</span></div>` : '';
     const voSection = s.vo ? `<div class="actor-vo-section"><div class="actor-vo-label">VO 口白</div><div class="actor-vo-text">${s.vo}</div></div>` : '';
     return `${divider}
       <div class="actor-card${isBroll?' broll':''}">
@@ -557,6 +603,13 @@ function renderActor() {
         ${voSection}
       </div>`;
   }).join('');
+}
+
+function switchActorProj(idx) {
+  actorCurrent = idx;
+  renderActor(idx);
+  document.getElementById('view-actor').scrollTop = 0;
+  window.scrollTo(0,0);
 }
 
 // ══ VIEW SWITCH ══
@@ -659,14 +712,63 @@ function confirmImport() {
 }
 
 // ══ EXPORT ══
+let exportSelected = new Set();
+
 function renderExport() {
-  const shots = getCurrentShots();
-  const proj  = projects[currentProj];
-  const now   = new Date();
-  document.getElementById('exportDate').textContent = `${proj.ep} · ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const done = shots.filter(s=>s.status==='ok'||s.status==='best').length;
-  document.getElementById('exportStat').textContent = `${done}/${shots.length}`;
-  document.getElementById('exportBody').innerHTML = shots.map(s=>{
+  // 預設勾選當前影片
+  if (exportSelected.size === 0) exportSelected.add(currentProj);
+
+  const cl = document.getElementById('exportChecklist');
+  cl.innerHTML = projects.map((p,i) => {
+    const done = p.shots.filter(s=>s.status==='ok'||s.status==='best').length;
+    const checked = exportSelected.has(i);
+    return `<div class="export-check-row${checked?' checked':''}" onclick="toggleExportSel(${i})">
+      <div class="export-check-box">${checked?'✓':''}</div>
+      <div class="export-check-name">${p.title}</div>
+      <div class="export-check-meta">${done}/${p.shots.length} cuts</div>
+    </div>`;
+  }).join('');
+
+  updateExportButtons();
+}
+
+function toggleExportSel(idx) {
+  if (exportSelected.has(idx)) exportSelected.delete(idx);
+  else exportSelected.add(idx);
+  renderExport();
+}
+
+function updateExportButtons() {
+  const count   = exportSelected.size;
+  const tsvBtn  = document.getElementById('exportTsvBtn');
+  const actBtn  = document.getElementById('exportActorBtn');
+  const prevCard= document.getElementById('exportPreviewCard');
+  document.getElementById('exportSelCount').textContent = `已選 ${count} 支`;
+
+  if (count === 0) {
+    tsvBtn.style.display = actBtn.style.display = 'none';
+    prevCard.style.display = 'none';
+    return;
+  }
+  tsvBtn.style.display = actBtn.style.display = 'block';
+
+  // 預覽：只顯示單支的時候才展開
+  if (count === 1) {
+    const idx   = [...exportSelected][0];
+    const shots = projects[idx].shots;
+    const done  = shots.filter(s=>s.status==='ok'||s.status==='best').length;
+    const now   = new Date();
+    document.getElementById('exportDate').textContent = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    document.getElementById('exportStat').textContent = `${done}/${shots.length}`;
+    document.getElementById('exportBody').innerHTML   = buildExportBody(shots);
+    prevCard.style.display = 'block';
+  } else {
+    prevCard.style.display = 'none';
+  }
+}
+
+function buildExportBody(shots) {
+  return shots.map(s=>{
     const isA   = s.type==='A-roll';
     const badge = s.status?(s.status==='best'?'★ BEST':s.status==='ok'?'✓ OK':'✕ NG'):'— 未拍';
     const bc    = s.status==='best'?'color:var(--best)':s.status==='ok'?'color:var(--ok)':s.status==='ng'?'color:var(--ng)':'color:var(--muted)';
@@ -679,31 +781,48 @@ function renderExport() {
   }).join('');
 }
 
-function buildTSV() {
-  const shots = getCurrentShots();
-  const proj  = projects[currentProj];
-  const hdrs  = ['Cut','類型','說話人','VO口白','畫面描述','狀態','Take明細','可用片段','現場備忘'];
-  const rows  = shots.map(s=>{
+function buildTSVForProj(proj) {
+  const hdrs = ['影片','Cut','類型','說話人','VO口白','畫面描述','狀態','Take明細','可用片段','現場備忘'];
+  const rows = proj.shots.map(s=>{
     const status = s.status==='best'?'BEST':s.status==='ok'?'OK':s.status==='ng'?'NG':'未拍';
     const detail = s.takes.length===0?'—':s.takes.map((t,i)=>t.type==='best'?`T${i+1}:BEST`:t.type==='ok'?`T${i+1}:OK${t.clip?'('+t.clip+')':''}` :`T${i+1}:NG`).join(' / ');
     const clips  = s.takes.filter(t=>t.type==='ok'&&t.clip).map((t,i)=>`T${s.takes.indexOf(t)+1}: ${t.clip}`).join(' / ')||'—';
     const memos  = s.memos.length?s.memos.map(m=>m.text).join(' / '):'—';
-    return [`C${String(s.id).padStart(2,'0')}`,s.type,s.speaker||'—',s.vo||'—',s.scene,status,detail,clips,memos].map(v=>String(v).replace(/\t/g,' ')).join('\t');
+    return [proj.title,`C${String(s.id).padStart(2,'0')}`,s.type,s.speaker||'—',s.vo||'—',s.scene,status,detail,clips,memos].map(v=>String(v).replace(/\t/g,' ')).join('\t');
   });
-  return [hdrs.join('\t'),...rows].join('\n');
+  return rows.join('\n');
 }
 
 function copyTSV() {
-  navigator.clipboard.writeText(buildTSV())
-    .then(()=>{ showSync(); alert('已複製！\n打開 Google Sheets → 點剪輯指引分頁 A3 → Cmd+V ✓'); })
-    .catch(()=>alert(buildTSV()));
+  if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
+  const hdrs = ['影片','Cut','類型','說話人','VO口白','畫面描述','狀態','Take明細','可用片段','現場備忘'].join('\t');
+  const body = [...exportSelected].map(i=>buildTSVForProj(projects[i])).join('\n');
+  const tsv  = hdrs + '\n' + body;
+  navigator.clipboard.writeText(tsv)
+    .then(()=>{ showSync(); alert(`已複製 ${exportSelected.size} 支影片的剪輯指引！\n打開 Google Sheets → 點剪輯指引分頁 A3 → Cmd+V ✓`); })
+    .catch(()=>alert(tsv));
 }
 
-function copyActorLink() {
-  const url = window.location.href.split('?')[0] + '?mode=actor&proj=' + currentProj;
-  navigator.clipboard.writeText(url)
-    .then(()=>{ showSync(); alert('已複製演員稿連結！\n\n傳給演員，手機打開直接看稿 ✓\n\n' + url); })
-    .catch(()=>{ alert('演員稿連結：\n' + url); });
+async function copyActorLink() {
+  if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
+  const selected = [...exportSelected].map(i => ({
+    title: projects[i].title,
+    shots: projects[i].shots.map(s => ({ id:s.id, type:s.type, speaker:s.speaker, scene:s.scene, vo:s.vo }))
+  }));
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(selected))));
+  const base    = window.location.href.split('?')[0];
+  const longUrl = `${base}?mode=actor&data=${encoded}`;
+
+  // 用 TinyURL 縮短
+  let finalUrl = longUrl;
+  try {
+    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+    if (res.ok) finalUrl = await res.text();
+  } catch(e) { /* 縮短失敗就用原始連結 */ }
+
+  navigator.clipboard.writeText(finalUrl)
+    .then(()=>{ showSync(); alert(`已複製演員稿連結！\n\n${finalUrl}\n\n傳給演員，手機打開即可切換 ${selected.length} 支腳本`); })
+    .catch(()=>alert(finalUrl));
 }
 
 function showSync() {
@@ -742,30 +861,37 @@ function loadData() {
   const params = new URLSearchParams(window.location.search);
   const mode   = params.get('mode');
   const proj   = params.get('proj');
-
-  // 先嘗試從 localStorage 讀回資料
-  const hasStored = loadData();
-
-  // URL 有指定 proj 時切換（演員稿連結用）
-  if (proj !== null) {
-    currentProj = Math.min(parseInt(proj), projects.length - 1);
-  }
-
-  document.getElementById('actorTitle').textContent = projects[currentProj].title;
-  updateProjSelect();
+  const data   = params.get('data');
 
   if (mode === 'actor') {
     document.body.classList.add('actor-only');
-    renderActor();
-  } else {
-    render();
-    if (hasStored) {
-      // 顯示讀取成功提示
-      const badge = document.getElementById('syncBadge');
-      badge.textContent = '✓ 資料已還原';
-      badge.classList.add('show');
-      setTimeout(()=>{ badge.classList.remove('show'); badge.textContent='✓ 已同步'; }, 2500);
+    // 從 URL data 還原演員稿資料
+    if (data) {
+      try {
+        actorProjects = JSON.parse(decodeURIComponent(escape(atob(data))));
+        actorCurrent  = 0;
+      } catch(e) { console.warn('data 解析失敗', e); }
+    } else {
+      // 舊版相容：從 localStorage 讀
+      loadData();
+      if (proj !== null) currentProj = Math.min(parseInt(proj), projects.length-1);
     }
+    renderActor();
+    return;
+  }
+
+  // 一般模式
+  const hasStored = loadData();
+  if (proj !== null) currentProj = Math.min(parseInt(proj), projects.length-1);
+  document.getElementById('actorTitle').textContent = projects[currentProj].title;
+  updateProjSelect();
+  render();
+
+  if (hasStored) {
+    const badge = document.getElementById('syncBadge');
+    badge.textContent = '✓ 資料已還原';
+    badge.classList.add('show');
+    setTimeout(()=>{ badge.classList.remove('show'); badge.textContent='✓ 已同步'; }, 2500);
   }
 })();
 </script>
