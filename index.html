@@ -57,6 +57,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .view{display:none;padding-bottom:90px}
 .view.active{display:block}
 
+/* ── PREP NOTE ── */
+.prep-note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--hi);border-radius:var(--r);padding:10px 13px;margin:10px 10px 2px}
+.prep-note-label{font-family:var(--mono);font-size:10px;color:var(--hi);letter-spacing:.08em;margin-bottom:5px}
+.prep-note-text{font-size:13px;line-height:1.7;color:var(--text2)}
+
 /* ── CUT CARDS ── */
 .shot-list{padding:10px;display:flex;flex-direction:column;gap:7px}
 .shot-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:all .2s;cursor:pointer;opacity:.45}
@@ -287,10 +292,15 @@ body.actor-only .actor-header{padding-top:24px}
         <input id="importTitle" class="import-input" type="text" placeholder="例：#安永實習中 · 外勤指南！" />
         <div class="import-step">
           <div class="step-num">2</div>
-          <div class="step-text">打開 Google Sheets「腳本」分頁<br>選取 <strong>A4 到 G 最後一列</strong>（不含標題）→ 複製</div>
+          <div class="step-text">從 Sheets 複製<strong>拍攝準備備註</strong>貼入（選填）</div>
         </div>
+        <textarea id="importNote" class="import-textarea" style="height:72px" placeholder="例：道具 / 場地 / 演員 / 服裝注意事項..."></textarea>
         <div class="import-step">
           <div class="step-num">3</div>
+          <div class="step-text">打開 Google Sheets「腳本」分頁<br>選取 <strong>A 到 G 最後一列</strong>（不含標題列）→ 複製</div>
+        </div>
+        <div class="import-step">
+          <div class="step-num">4</div>
           <div class="step-text">貼入下方，按「解析並預覽」確認後匯入</div>
         </div>
         <textarea id="importTextarea" class="import-textarea" placeholder="貼上從 Google Sheets 複製的內容..."></textarea>
@@ -400,16 +410,30 @@ function deleteProj(idx) {
   document.getElementById('actorTitle').textContent = projects[currentProj].title;
   updateProjSelect();
   renderProjList();
+  saveData();
   render();
 }
 
 // ══ RENDER CREW ══
 function render() {
   const shots = getCurrentShots();
+  const proj  = projects[currentProj];
   const list  = document.getElementById('shotList');
   list.innerHTML = '';
+
+  // 備註區塊
+  if (proj.note) {
+    const noteEl = document.createElement('div');
+    noteEl.className = 'prep-note';
+    noteEl.innerHTML = `<div class="prep-note-label">📋 拍攝準備</div><div class="prep-note-text">${proj.note.replace(/\n/g,'<br>')}</div>`;
+    list.appendChild(noteEl);
+  }
+
   if (shots.length === 0) {
-    list.innerHTML = '<div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:13px">尚無腳本<br><span style="font-size:11px;font-family:var(--mono)">請到「匯入」tab 貼上腳本</span></div>';
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:32px 16px;text-align:center;color:var(--muted);font-size:13px';
+    empty.innerHTML = '尚無腳本<br><span style="font-size:11px;font-family:var(--mono)">請到「匯入」tab 貼上腳本</span>';
+    list.appendChild(empty);
     updateProgress(); return;
   }
   shots.forEach(s => {
@@ -483,7 +507,7 @@ function deleteTake(id, idx) {
   else if (s.takes.some(t=>t.type==='best')) s.status = 'best';
   else if (s.takes.some(t=>t.type==='ok'))   s.status = 'ok';
   else s.status = 'ng';
-  showSync(); expandedId = id; render();
+  saveData(); showSync(); expandedId = id; render();
 }
 
 function toggleExpand(id) { expandedId = expandedId===id?null:id; render(); }
@@ -495,11 +519,12 @@ function addTake(id, type) {
   if (type==='ok') clip = prompt('可用片段說明（例如：0:02–0:05，或「前半段」）：') || '';
   s.takes.push({type, clip});
   s.status = s.takes.some(t=>t.type==='best') ? 'best' : s.takes.some(t=>t.type==='ok') ? 'ok' : 'ng';
-  showSync(); expandedId = id; render();
+  saveData(); showSync(); expandedId = id; render();
 }
 
 function saveField(id, field, el) {
-  getCurrentShots().find(x=>x.id===id)[field] = el.innerText.trim(); showSync();
+  getCurrentShots().find(x=>x.id===id)[field] = el.innerText.trim();
+  saveData(); showSync();
 }
 
 function addMemo(id) {
@@ -509,7 +534,7 @@ function addMemo(id) {
   if (text && text.trim()) {
     const now = new Date();
     s.memos.push({text:text.trim(), time:`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`});
-    showSync(); expandedId = id; render();
+    saveData(); showSync(); expandedId = id; render();
   }
 }
 
@@ -563,45 +588,77 @@ function switchView(name, tabEl) {
 }
 
 // ══ IMPORT ══
+let parsedNote = '';
+
+// RFC4180 TSV parser：支援 Sheets 斷行格子（"..." 包覆）
+function parseTSV(raw) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i], nx = raw[i+1];
+    if (inQ) {
+      if (ch === '"' && nx === '"') { field += '"'; i++; }        // escaped quote
+      else if (ch === '"') { inQ = false; }                       // end quote
+      else { field += ch; }                                        // content (including \n)
+    } else {
+      if (ch === '"') { inQ = true; }
+      else if (ch === '\t') { row.push(field.trim()); field = ''; }
+      else if (ch === '\n') { row.push(field.trim()); rows.push(row); row = []; field = ''; }
+      else { field += ch; }
+    }
+  }
+  if (field || row.length) { row.push(field.trim()); rows.push(row); }
+  return rows.filter(r => r.some(c => c));
+}
+
 function parseImport() {
   const raw = document.getElementById('importTextarea').value.trim();
   if (!raw) { alert('請先貼上內容'); return; }
-  const lines   = raw.split('\n').filter(l=>l.trim());
-  const preview = document.getElementById('importPreview');
+
+  const preview    = document.getElementById('importPreview');
   const confirmBtn = document.getElementById('importConfirmBtn');
-  preview.innerHTML=''; preview.classList.remove('show'); parsedShots=null;
-  const results=[], errors=[];
-  lines.forEach((line,i)=>{
-    const cols = line.split('\t');
-    // 格式：影片名稱, 集數, Cut, 類型, 說話人, 畫面描述, VO口白（秒數已移除）
-    if (cols.length < 5) { errors.push(`第 ${i+1} 行欄位不足，略過`); return; }
-    const type    = (cols[3]||'').trim();
-    const speaker = (cols[4]||'').trim();
-    const scene   = (cols[5]||'').trim();
-    const vo      = (cols[6]||'').trim();
+  preview.innerHTML = ''; preview.classList.remove('show');
+  parsedShots = null; parsedNote = '';
+
+  const rows    = parseTSV(raw);
+  const results = [], errors = [];
+
+  rows.forEach((cols, i) => {
+    // 格式：影片名稱(0), 集數(1), Cut(2), 類型(3), 說話人(4), 畫面描述(5), VO口白(6)
+    if (cols.length < 4) { errors.push(`第 ${i+1} 行欄位不足，略過`); return; }
+    const type    = (cols[3]||'').replace(/\n/g,' ').trim();
+    const speaker = (cols[4]||'').replace(/\n/g,' ').trim();
+    const scene   = (cols[5]||'').replace(/\n/g,'\n').trim();   // 保留換行
+    const vo      = (cols[6]||'').replace(/\n/g,' ').trim();    // VO 保持單行
     if (!['A-roll','B-roll'].includes(type)) { errors.push(`第 ${i+1} 行類型「${type}」不正確`); return; }
     results.push({id:results.length+1, type, speaker, scene, vo, takes:[], status:null, memos:[]});
   });
-  if (errors.length) { preview.classList.add('show'); preview.innerHTML=errors.map(e=>`<div class="preview-err">⚠ ${e}</div>`).join(''); }
-  if (results.length>0) {
+
+  if (errors.length) {
+    preview.classList.add('show');
+    preview.innerHTML = errors.map(e=>`<div class="preview-err">⚠ ${e}</div>`).join('');
+  }
+  if (results.length > 0) {
     parsedShots = results;
     preview.classList.add('show');
     preview.innerHTML += `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 0 6px">解析到 ${results.length} 個 Cut：</div>` +
       results.map(s=>`<div class="preview-row"><span class="pr-cut ${s.type==='A-roll'?'a':'b'}">C${String(s.id).padStart(2,'0')}</span><span class="pr-type">${s.type}</span><span class="pr-vo">${s.vo||s.scene||'（無內容）'}</span></div>`).join('');
-    confirmBtn.style.display='block';
+    confirmBtn.style.display = 'block';
   }
 }
 
 function confirmImport() {
   if (!parsedShots||parsedShots.length===0) return;
   const titleInput = document.getElementById('importTitle').value.trim();
+  const noteInput  = document.getElementById('importNote').value.trim();
   if (!titleInput) { alert('請先填寫主題名稱'); document.getElementById('importTitle').focus(); return; }
   if (!confirm(`確定新增「${titleInput}」？\n共 ${parsedShots.length} 個 Cut`)) return;
-  projects.push({ title: titleInput, shots: parsedShots });
+  projects.push({ title: titleInput, note: noteInput, shots: parsedShots });
   currentProj = projects.length - 1;
   expandedId  = null;
-  parsedShots = null;
+  parsedShots = null; parsedNote = '';
   document.getElementById('importTitle').value = '';
+  document.getElementById('importNote').value  = '';
   document.getElementById('importTextarea').value = '';
   document.getElementById('importPreview').classList.remove('show');
   document.getElementById('importPreview').innerHTML = '';
@@ -609,7 +666,7 @@ function confirmImport() {
   document.getElementById('actorTitle').textContent = projects[currentProj].title;
   updateProjSelect();
   renderProjList();
-  showSync();
+  saveData(); showSync();
   switchView('shots');
   render();
   alert(`✓ 已新增「${projects[currentProj].title}」，共 ${getCurrentShots().length} 個 Cut`);
@@ -668,12 +725,45 @@ function showSync() {
   el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1800);
 }
 
+// ══ LOCAL STORAGE ══
+const STORAGE_KEY = 'shot-checklist-v1';
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      projects,
+      currentProj,
+    }));
+  } catch(e) { console.warn('儲存失敗', e); }
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!saved.projects || !saved.projects.length) return false;
+    // 把儲存的資料覆蓋回 projects 陣列（保留 reference）
+    projects.length = 0;
+    saved.projects.forEach(p => projects.push(p));
+    currentProj = Math.min(saved.currentProj || 0, projects.length - 1);
+    return true;
+  } catch(e) { console.warn('讀取失敗', e); return false; }
+}
+
 // ══ INIT ══
 (function init() {
   const params = new URLSearchParams(window.location.search);
   const mode   = params.get('mode');
-  const proj   = parseInt(params.get('proj') || '0');
-  currentProj  = Math.min(proj, projects.length - 1);
+  const proj   = params.get('proj');
+
+  // 先嘗試從 localStorage 讀回資料
+  const hasStored = loadData();
+
+  // URL 有指定 proj 時切換（演員稿連結用）
+  if (proj !== null) {
+    currentProj = Math.min(parseInt(proj), projects.length - 1);
+  }
 
   document.getElementById('actorTitle').textContent = projects[currentProj].title;
   updateProjSelect();
@@ -683,6 +773,13 @@ function showSync() {
     renderActor();
   } else {
     render();
+    if (hasStored) {
+      // 顯示讀取成功提示
+      const badge = document.getElementById('syncBadge');
+      badge.textContent = '✓ 資料已還原';
+      badge.classList.add('show');
+      setTimeout(()=>{ badge.classList.remove('show'); badge.textContent='✓ 已同步'; }, 2500);
+    }
   }
 })();
 </script>
