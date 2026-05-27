@@ -40,7 +40,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .stat-best{color:var(--best)} .stat-ok{color:var(--ok)} .stat-ng{color:var(--ng)} .stat-todo{color:var(--muted)}
 
 /* ── LEGEND ── */
-.legend{display:flex;gap:10px;align-items:center;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:89px;z-index:98}
+.legend{display:flex;gap:10px;align-items:center;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:49px;z-index:98}
 .legend-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--muted)}
 .ld{width:8px;height:8px;border-radius:2px}
 .ld-a{background:var(--aroll)} .ld-b{background:var(--broll)}
@@ -48,7 +48,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .legend-note{font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.7}
 
 /* ── TABS ── */
-.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:119px;z-index:97}
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:79px;z-index:97}
 .tab{flex:1;padding:8px 2px;font-family:var(--mono);font-size:10px;letter-spacing:.03em;color:var(--muted);text-align:center;cursor:pointer;border-bottom:2px solid transparent;transition:all .18s}
 .tab.active{color:var(--text);border-bottom-color:var(--text)}
 .tab.actor-tab.active{color:var(--aroll);border-bottom-color:var(--aroll)}
@@ -75,6 +75,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .card-header{display:flex;align-items:center;gap:7px;padding:10px 12px}
 .cut-num{font-family:var(--mono);font-size:11px;font-weight:500;color:#fff;border-radius:4px;padding:2px 7px;flex-shrink:0}
 .aroll .cut-num{background:var(--aroll)} .broll .cut-num{background:var(--broll)}
+.speaker-badge{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);background:var(--surface2);border:1px solid var(--border2);padding:1px 7px;border-radius:4px;flex-shrink:0}
 .type-badge{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;flex-shrink:0;font-weight:500}
 .aroll .type-badge{color:var(--aroll);background:var(--aroll-bdg);border:1px solid var(--aroll-bdr)}
 .broll .type-badge{color:var(--broll);background:var(--broll-bdg);border:1px solid var(--broll-bdr)}
@@ -236,14 +237,6 @@ body.actor-only .actor-header{padding-top:24px}
     <div class="prog-bar"><div class="prog-fill" id="progressFill" style="width:0%"></div></div>
     <div class="prog-label" id="progressLabel">0/16</div>
   </div>
-</div>
-
-<!-- STATS BAR -->
-<div class="stats-bar">
-  <div class="stat-item"><div class="stat-num stat-best" id="statBest">0</div><div class="stat-lbl">BEST</div></div>
-  <div class="stat-item"><div class="stat-num stat-ok"   id="statOk">0</div><div class="stat-lbl">OK</div></div>
-  <div class="stat-item"><div class="stat-num stat-ng"   id="statNg">0</div><div class="stat-lbl">NG</div></div>
-  <div class="stat-item"><div class="stat-num stat-todo" id="statTodo">16</div><div class="stat-lbl">未拍</div></div>
 </div>
 
 <!-- LEGEND -->
@@ -475,6 +468,7 @@ function buildCard(s) {
   return `
     <div class="card-header">
       <span class="cut-num">C${String(s.id).padStart(2,'0')}</span>
+      ${s.speaker ? `<span class="speaker-badge">${s.speaker}</span>` : ''}
       <span class="type-badge">${s.type}</span>
       <span class="card-preview">${preview}</span>
       ${statusBadge}
@@ -540,17 +534,9 @@ function addMemo(id) {
 
 function updateProgress() {
   const shots = getCurrentShots();
-  const best  = shots.filter(s=>s.status==='best').length;
-  const ok    = shots.filter(s=>s.status==='ok').length;
-  const ng    = shots.filter(s=>s.status==='ng').length;
-  const todo  = shots.filter(s=>!s.status).length;
-  const done  = best + ok;
+  const done  = shots.filter(s=>s.status==='ok'||s.status==='best').length;
   document.getElementById('progressFill').style.width  = shots.length ? Math.round(done/shots.length*100)+'%' : '0%';
   document.getElementById('progressLabel').textContent = `${done}/${shots.length}`;
-  document.getElementById('statBest').textContent = best;
-  document.getElementById('statOk').textContent   = ok;
-  document.getElementById('statNg').textContent   = ng;
-  document.getElementById('statTodo').textContent = todo;
 }
 
 // ══ ACTOR ══
