@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>現場腳本工具</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+:root {
+  --bg:#f4f4f4; --surface:#fff; --surface2:#f0f0f0;
+  --border:#e2e2e2; --border2:#c8c8c8;
+  --text:#111; --text2:#555; --muted:#aaa;
+  --aroll:#2563b0; --aroll-bg:rgba(37,99,176,.07); --aroll-bdr:rgba(37,99,176,.22); --aroll-bdg:rgba(37,99,176,.1);
+  --broll:#1e7d5a; --broll-bg:rgba(30,125,90,.06); --broll-bdr:rgba(30,125,90,.2);  --broll-bdg:rgba(30,125,90,.1);
+  --hi:#c47a0a; --hi-bdr:rgba(196,122,10,.3); --hi-bg:rgba(196,122,10,.06);
+  --best:#2d8a4e; --best-bg:rgba(45,138,78,.09);  --best-bdr:rgba(45,138,78,.28);
+  --ok:#c47a0a;   --ok-bg:rgba(196,122,10,.09);   --ok-bdr:rgba(196,122,10,.28);
+  --ng:#b83232;   --ng-bg:rgba(184,50,50,.08);    --ng-bdr:rgba(184,50,50,.28);
+  --mono:'DM Mono',monospace; --sans:'Noto Sans TC',sans-serif; --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
+
+/* ── TOPBAR ── */
+.topbar{position:sticky;top:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:8px}
+.proj-select{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--surface);background:var(--text);border:none;border-radius:4px;padding:3px 8px;cursor:pointer;flex-shrink:0;appearance:none;-webkit-appearance:none}
+.proj-select option{background:#fff;color:var(--text)}
+.topbar-title{flex:1;font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog-wrap{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.prog-bar{width:56px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;background:var(--text);border-radius:2px;transition:width .4s}
+.prog-label{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
+
+/* ── STATS BAR ── */
+.stats-bar{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:48px;z-index:99}
+.stat-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:5px 2px;border-right:1px solid var(--border)}
+.stat-item:last-child{border-right:none}
+.stat-num{font-family:var(--mono);font-size:13px;font-weight:700}
+.stat-lbl{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.04em}
+.stat-best{color:var(--best)} .stat-ok{color:var(--ok)} .stat-ng{color:var(--ng)} .stat-todo{color:var(--muted)}
+
+/* ── LEGEND ── */
+.legend{display:flex;gap:10px;align-items:center;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:49px;z-index:98}
+.legend-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.ld{width:8px;height:8px;border-radius:2px}
+.ld-a{background:var(--aroll)} .ld-b{background:var(--broll)}
+.legend-sep{flex:1}
+.legend-note{font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.7}
+
+/* ── TABS ── */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:79px;z-index:97}
+.tab{flex:1;padding:8px 2px;font-family:var(--mono);font-size:10px;letter-spacing:.03em;color:var(--muted);text-align:center;cursor:pointer;border-bottom:2px solid transparent;transition:all .18s}
+.tab.active{color:var(--text);border-bottom-color:var(--text)}
+.tab.actor-tab.active{color:var(--aroll);border-bottom-color:var(--aroll)}
+
+/* ── VIEWS ── */
+.view{display:none;padding-bottom:90px}
+.view.active{display:block}
+
+/* ── PREP NOTE ── */
+.prep-note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--hi);border-radius:var(--r);padding:10px 13px;margin:10px 10px 2px}
+.prep-note-label{font-family:var(--mono);font-size:10px;color:var(--hi);letter-spacing:.08em;margin-bottom:5px}
+.prep-note-text{font-size:13px;line-height:1.7;color:var(--text2)}
+
+/* ── CUT CARDS ── */
+.shot-list{padding:10px;display:flex;flex-direction:column;gap:7px}
+.shot-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:all .2s;cursor:pointer;opacity:.45}
+.shot-card.status-best{opacity:1;background:var(--best-bg);border:1px solid var(--best-bdr);border-left:3px solid var(--best)}
+.shot-card.status-ok  {opacity:1;background:var(--ok-bg);  border:1px solid var(--ok-bdr);  border-left:3px solid var(--ok)}
+.shot-card.status-ng  {opacity:1;border-left:3px solid var(--ng)}
+.shot-card.expanded   {opacity:1;border-color:var(--border2)}
+.shot-card.aroll .card-header{border-top:3px solid var(--aroll)}
+.shot-card.broll .card-header{border-top:3px solid var(--broll)}
+
+.card-header{display:flex;align-items:center;gap:7px;padding:10px 12px}
+.cut-num{font-family:var(--mono);font-size:11px;font-weight:500;color:#fff;border-radius:4px;padding:2px 7px;flex-shrink:0}
+.aroll .cut-num{background:var(--aroll)} .broll .cut-num{background:var(--broll)}
+.speaker-badge{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);background:var(--surface2);border:1px solid var(--border2);padding:1px 7px;border-radius:4px;flex-shrink:0}
+.type-badge{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;flex-shrink:0;font-weight:500}
+.aroll .type-badge{color:var(--aroll);background:var(--aroll-bdg);border:1px solid var(--aroll-bdr)}
+.broll .type-badge{color:var(--broll);background:var(--broll-bdg);border:1px solid var(--broll-bdr)}
+.card-preview{flex:1;font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status-pill{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;flex-shrink:0;font-weight:500}
+.sp-best{background:var(--best-bg);color:var(--best)} .sp-ok{background:var(--ok-bg);color:var(--ok)} .sp-ng{background:var(--ng-bg);color:var(--ng)}
+
+.card-body{display:none;padding:10px 12px 12px;flex-direction:column;gap:8px;border-top:1px solid var(--border)}
+.shot-card.expanded .card-body{display:flex}
+
+/* slate hint */
+.slate-hint{background:var(--text);color:#fff;border-radius:6px;padding:7px 11px;font-family:var(--mono);font-size:12px;display:flex;align-items:center;gap:7px}
+.slate-hint .sh-icon{font-size:15px}
+
+.scene-block{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
+.block-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}
+.scene-text{font-size:13px;line-height:1.65;color:var(--text2)}
+.scene-text[contenteditable=true]:focus{outline:none}
+.vo-block{background:var(--hi-bg);border:1px solid var(--hi-bdr);border-left:3px solid var(--hi);border-radius:7px;padding:8px 10px}
+.vo-block .block-label{color:var(--hi)}
+.vo-text{font-size:14px;line-height:1.7;color:var(--text);font-weight:600}
+.vo-text[contenteditable=true]:focus{outline:none}
+
+.take-count-row{display:flex;align-items:center;justify-content:space-between}
+.take-counter{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.take-dots{display:flex;gap:3px;flex-wrap:wrap}
+.take-dot{width:9px;height:9px;border-radius:50%;background:var(--border2)}
+.take-dot.best{background:var(--best)} .take-dot.ok{background:var(--ok)} .take-dot.ng{background:var(--ng)}
+
+.take-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.take-btn{padding:11px 4px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .13s;background:var(--surface);color:var(--text2)}
+.take-btn .tb-icon{font-size:17px} .take-btn .tb-label{font-size:10px;font-family:var(--mono)} .take-btn .tb-sub{font-size:9px;opacity:.6}
+.take-btn:active{transform:scale(.93)}
+.take-btn.btn-best{background:var(--best-bg);color:var(--best);border-color:var(--best-bdr)}
+.take-btn.btn-ok  {background:var(--ok-bg);  color:var(--ok);  border-color:var(--ok-bdr)}
+.take-btn.btn-ng  {background:var(--ng-bg);  color:var(--ng);  border-color:var(--ng-bdr)}
+
+.take-list{display:flex;flex-direction:column;gap:3px}
+.take-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;font-size:12px}
+.take-row.best{background:var(--best-bg)} .take-row.ok{background:var(--ok-bg)} .take-row.ng{opacity:.4}
+.tr-num{font-family:var(--mono);font-size:10px;color:var(--muted);width:22px;flex-shrink:0}
+.tr-badge{font-family:var(--mono);font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;flex-shrink:0}
+.tr-badge.best{color:var(--best);border:1px solid var(--best-bdr)} .tr-badge.ok{color:var(--ok);border:1px solid var(--ok-bdr)} .tr-badge.ng{color:var(--ng);border:1px solid var(--ng-bdr);font-weight:400}
+.tr-clip{font-size:12px;color:var(--text2);flex:1;font-style:italic}
+.tr-del{margin-left:auto;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 5px;border-radius:4px;line-height:1;transition:all .15s;flex-shrink:0}
+.tr-del:hover{background:var(--ng-bg);color:var(--ng)}
+
+.memo-btn{width:100%;padding:8px;border:1px dashed var(--border2);border-radius:7px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;justify-content:center;gap:5px;transition:all .18s}
+.memo-btn:active{border-color:var(--text);color:var(--text)}
+.memo-list{display:flex;flex-direction:column;gap:4px}
+.memo-item{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 9px;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
+.memo-item .m-text{flex:1} .memo-item .m-time{font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+/* ── IMPORT ── */
+.import-view{padding:14px}
+.import-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.import-header{padding:12px 15px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.import-title{font-size:13px;font-weight:700;color:var(--text)}
+.import-sub{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+.import-body{padding:14px 15px;display:flex;flex-direction:column;gap:12px}
+.import-step{display:flex;gap:10px;align-items:flex-start}
+.step-num{width:22px;height:22px;border-radius:50%;background:var(--text);color:#fff;font-size:11px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-text{font-size:13px;line-height:1.6;color:var(--text2)}
+.step-text strong{color:var(--text)}
+.import-textarea{width:100%;height:110px;border:1px solid var(--border2);border-radius:7px;padding:9px 12px;font-size:12px;font-family:var(--mono);color:var(--text);background:var(--surface2);resize:vertical;outline:none;line-height:1.5}
+.import-textarea:focus{border-color:var(--text)}
+.import-preview{display:none;flex-direction:column;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:9px 12px;max-height:180px;overflow-y:auto}
+.import-preview.show{display:flex}
+.preview-row{display:flex;gap:8px;align-items:center;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)}
+.preview-row:last-child{border-bottom:none}
+.pr-cut{font-family:var(--mono);font-weight:600;width:32px;flex-shrink:0}
+.pr-cut.a{color:var(--aroll)} .pr-cut.b{color:var(--broll)}
+.pr-type{font-family:var(--mono);font-size:10px;color:var(--muted);width:44px;flex-shrink:0}
+.pr-vo{flex:1;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview-err{color:var(--ng);font-size:12px}
+.import-input{width:100%;border:1px solid var(--border2);border-radius:7px;padding:9px 12px;font-size:13px;font-family:var(--sans);color:var(--text);background:var(--surface);outline:none;transition:border-color .18s}
+.import-input:focus{border-color:var(--text)}
+.import-input::placeholder{color:var(--muted)}
+.proj-list-item{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.proj-list-item:last-child{border-bottom:none}
+.proj-list-name{flex:1;color:var(--text);font-weight:500}
+.proj-list-count{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.proj-list-del{font-size:11px;color:var(--ng);cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid var(--ng-bdr);background:var(--ng-bg);font-family:var(--mono)}
+.import-btn{width:100%;padding:11px;border:1px solid var(--border2);border-radius:var(--r);background:var(--surface2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .18s}
+.import-btn:active{opacity:.7}
+.import-btn-confirm{background:var(--text);color:#fff;border-color:var(--text)}
+
+/* ── ACTOR VIEW ── */
+#view-actor{background:#fff}
+.actor-header{padding:18px 18px 12px;border-bottom:1px solid var(--border)}
+.actor-header-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:3px}
+.actor-proj{font-family:var(--mono);font-size:11px;color:var(--aroll);margin-bottom:3px}
+.actor-header-title{font-size:16px;font-weight:700;color:var(--text)}
+.actor-shots{padding:14px;display:flex;flex-direction:column;gap:14px}
+.actor-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+.actor-card.broll{opacity:.45;border-style:dashed}
+.actor-card-header{display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.actor-cut-num{font-family:var(--mono);font-size:12px;font-weight:500;color:#fff;padding:2px 9px;border-radius:4px}
+.actor-card:not(.broll) .actor-cut-num{background:var(--aroll)}
+.actor-card.broll .actor-cut-num{background:var(--broll)}
+.actor-type-badge{font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:4px}
+.actor-card:not(.broll) .actor-type-badge{color:var(--aroll);background:var(--aroll-bdg);border:1px solid var(--aroll-bdr)}
+.actor-card.broll .actor-type-badge{color:var(--broll);background:var(--broll-bdg);border:1px solid var(--broll-bdr)}
+.actor-scene-section{padding:12px 14px 10px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.actor-scene-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted);margin-bottom:6px}
+.actor-scene-text{font-size:14px;line-height:1.65;color:var(--text2)}
+.actor-vo-section{padding:14px 14px 16px;border-left:3px solid var(--hi)}
+.actor-vo-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--hi);margin-bottom:8px}
+.actor-vo-text{font-size:22px;line-height:1.7;font-weight:700;color:var(--text)}
+.actor-divider{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--muted);padding:0 2px}
+.actor-divider::before,.actor-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── EXPORT ── */
+.export-view{padding:14px}
+.export-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:10px}
+.export-header{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.export-title{font-size:13px;font-weight:600;color:var(--text)}
+.export-sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.export-body{padding:10px 14px}
+.export-row{display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.export-row:last-child{border-bottom:none}
+.er-cut{font-family:var(--mono);font-size:11px;width:44px;flex-shrink:0;padding-top:1px}
+.er-cut.a{color:var(--aroll)} .er-cut.b{color:var(--broll)}
+.er-status{width:44px;flex-shrink:0;font-size:11px;font-weight:500}
+.er-info{flex:1;line-height:1.6}
+.er-scene{color:var(--text2);font-size:12px} .er-vo{color:var(--text);font-weight:500;font-size:12px} .er-memo{color:var(--hi);font-size:11px}
+.export-checklist{padding:4px 0}
+.export-check-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.export-check-row:last-child{border-bottom:none}
+.export-check-row:active{background:var(--surface2)}
+.export-check-box{width:18px;height:18px;border:2px solid var(--border2);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:11px}
+.export-check-row.checked .export-check-box{background:var(--text);border-color:var(--text);color:#fff}
+.export-check-name{flex:1;font-size:13px;font-weight:500;color:var(--text)}
+.export-check-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.export-btn{width:100%;padding:12px;border:none;border-radius:var(--r);background:var(--text);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);margin-bottom:8px;transition:opacity .18s}
+.export-btn:active{opacity:.7}
+.export-btn.secondary{background:var(--surface);color:var(--text);border:1px solid var(--border2)}
+
+/* ── SYNC / NAV ── */
+.sync-badge{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);background:var(--best);color:#fff;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;font-family:var(--mono);opacity:0;transition:opacity .3s;pointer-events:none;z-index:200}
+.sync-badge.show{opacity:1}
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--surface);border-top:1px solid var(--border);display:flex;padding:8px 0 18px;z-index:100}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px;cursor:pointer;color:var(--muted);font-size:9px;font-family:var(--mono);transition:color .18s}
+.bnav-btn .bn-icon{font-size:17px}
+.bnav-btn.active{color:var(--text)}
+.bnav-btn.actor-nav.active{color:var(--aroll)}
+
+/* ── ACTOR-ONLY MODE (URL ?mode=actor) ── */
+body.actor-only .topbar,
+body.actor-only .legend,
+body.actor-only .tabs,
+body.actor-only .bottom-nav,
+body.actor-only .sync-badge{display:none!important}
+body.actor-only #view-actor{display:block!important;padding-bottom:20px}
+body.actor-only .actor-header{padding-top:16px}
+
+/* 演員稿 project bar */
+.actor-proj-bar{display:flex;overflow-x:auto;gap:6px;padding:12px 14px 8px;background:var(--surface);border-bottom:1px solid var(--border);scrollbar-width:none;position:sticky;top:0;z-index:50}
+.actor-proj-bar::-webkit-scrollbar{display:none}
+.actor-proj-tab{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .18s;white-space:nowrap}
+.actor-proj-tab.active{background:var(--text);color:#fff;border-color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <select class="proj-select" id="projSelect" onchange="switchProject(this.value)">
+    <option value="0">#安永實習中 · 外勤指南！</option>
+  </select>
+  <div class="prog-wrap">
+    <div class="prog-bar"><div class="prog-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="prog-label" id="progressLabel">0/16</div>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="legend-item"><div class="ld ld-a"></div>A-roll</div>
+  <div class="legend-item"><div class="ld ld-b"></div>B-roll</div>
+  <div class="legend-sep"></div>
+  <div class="legend-note">未拍 = 淡色</div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active"    onclick="switchView('shots',this)">Cut 清單</div>
+  <div class="tab actor-tab" onclick="switchView('actor',this)">演員稿</div>
+  <div class="tab"           onclick="switchView('import',this)">匯入</div>
+  <div class="tab"           onclick="switchView('export',this)">匯出</div>
+</div>
+
+<!-- CREW -->
+<div class="view active" id="view-shots">
+  <div class="shot-list" id="shotList"></div>
+</div>
+
+<!-- ACTOR -->
+<div class="view" id="view-actor">
+  <div id="actorProjBar" class="actor-proj-bar" style="display:none"></div>
+  <div class="actor-header">
+    <div class="actor-header-label">ACTOR MODE</div>
+    <div class="actor-header-title" id="actorTitle">#安永實習中 · 外勤指南！</div>
+  </div>
+  <div class="actor-shots" id="actorList"></div>
+</div>
+
+<!-- IMPORT -->
+<div class="view" id="view-import">
+  <div class="import-view">
+    <div class="import-card">
+      <div class="import-header">
+        <div class="import-title">匯入腳本</div>
+        <div class="import-sub">填寫主題名稱，貼入腳本，新增為獨立影片</div>
+      </div>
+      <div class="import-body">
+        <div class="import-step">
+          <div class="step-num">1</div>
+          <div class="step-text">填寫這支影片的<strong>主題名稱</strong></div>
+        </div>
+        <input id="importTitle" class="import-input" type="text" placeholder="例：#安永實習中 · 外勤指南！" />
+        <div class="import-step">
+          <div class="step-num">2</div>
+          <div class="step-text">從 Sheets 複製<strong>拍攝準備備註</strong>貼入（選填）</div>
+        </div>
+        <textarea id="importNote" class="import-textarea" style="height:72px" placeholder="例：道具 / 場地 / 演員 / 服裝注意事項..."></textarea>
+        <div class="import-step">
+          <div class="step-num">3</div>
+          <div class="step-text">打開 Google Sheets「腳本」分頁<br>選取 <strong>A 到 G 最後一列</strong>（不含標題列）→ 複製</div>
+        </div>
+        <div class="import-step">
+          <div class="step-num">4</div>
+          <div class="step-text">貼入下方，按「解析並預覽」確認後匯入</div>
+        </div>
+        <textarea id="importTextarea" class="import-textarea" placeholder="貼上從 Google Sheets 複製的內容..."></textarea>
+        <div class="import-preview" id="importPreview"></div>
+        <button class="import-btn" onclick="parseImport()">解析並預覽</button>
+        <button class="import-btn import-btn-confirm" id="importConfirmBtn" onclick="confirmImport()" style="display:none">✓ 確認匯入（新增為獨立影片）</button>
+
+        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="import-title" style="font-size:12px;margin-bottom:8px;color:var(--text2)">已匯入的影片</div>
+          <div id="projList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT -->
+<div class="view" id="view-export">
+  <div class="export-view">
+    <div class="export-card">
+      <div class="export-header">
+        <div class="export-title">選擇要匯出的影片</div>
+        <div class="export-sub" id="exportSelCount">已選 0 支</div>
+      </div>
+      <div class="export-checklist" id="exportChecklist"></div>
+    </div>
+    <div id="exportPreviewCard" style="display:none">
+      <div class="export-card">
+        <div class="export-header">
+          <div><div class="export-title">剪輯指引預覽</div><div class="export-sub" id="exportDate"></div></div>
+          <div class="export-sub" id="exportStat"></div>
+        </div>
+        <div class="export-body" id="exportBody"></div>
+      </div>
+    </div>
+    <button class="export-btn" id="exportTsvBtn" onclick="copyTSV()" style="display:none">複製剪輯指引（貼進 Google Sheets）</button>
+    <button class="export-btn secondary" id="exportActorBtn" onclick="copyActorLink()" style="display:none">複製演員稿連結</button>
+    <button class="export-btn" onclick="copyBackupLink()" style="background:#1a1a1a;margin-top:4px">📲 複製完整備份連結（傳給自己手機用）</button>
+  </div>
+</div>
+
+<div class="sync-badge" id="syncBadge">✓ 已同步</div>
+
+<div class="bottom-nav">
+  <div class="bnav-btn active" id="bnav-shots" onclick="switchView('shots')"><span class="bn-icon">▦</span>Cut</div>
+  <div class="bnav-btn actor-nav" id="bnav-actor" onclick="switchView('actor')"><span class="bn-icon">◎</span>演員稿</div>
+  <div class="bnav-btn" id="bnav-import" onclick="switchView('import')"><span class="bn-icon">↙</span>匯入</div>
+  <div class="bnav-btn" id="bnav-export" onclick="switchView('export')"><span class="bn-icon">↗</span>匯出</div>
+</div>
+
+<script>
+// ══ PROJECTS ══
+const projects = [
+  {
+    title:'#安永實習中 · 外勤指南！',
+    shots:[
+      {id:1,type:'A-roll',speaker:'A',scene:'A、B 並排坐，半身入鏡。A 轉向鏡頭開口，B 在旁邊微微點頭，不搶戲。背景辦公室，稍微虛焦。',vo:'A：我第一次出外勤的時候，其實滿緊張的，不知道自己要準備什麼。',takes:[],status:null,memos:[]},
+      {id:2,type:'A-roll',speaker:'B',scene:'B 接話，轉正面向鏡頭，語氣輕快帶點期待感，像是要公佈好消息一樣。',vo:'B：所以今天就想來跟大家分享，出外勤前可以先準備的幾個小重點！',takes:[],status:null,memos:[]},
+      {id:3,type:'B-roll',speaker:'',scene:'桌面俯拍。筆記本、資料夾、原子筆整齊排列，手從旁邊入鏡翻開資料夾。燈光打亮，乾淨白色桌面。',vo:'',takes:[],status:null,memos:[]},
+      {id:4,type:'A-roll',speaker:'A',scene:'A 正面對鏡頭，眼神認真，像是要交代重要事項的前輩感。微微前傾。',vo:'A：出外勤前，最重要的是要先確認好所有資訊。',takes:[],status:null,memos:[]},
+      {id:5,type:'A-roll',speaker:'B',scene:'B 用手指逐一列舉，每說一項手指彎一根，活潑但不誇張。語氣像在跟朋友聊天。',vo:'B：像是集合時間、地點、要去的客戶，還有要帶的文件或工具，避免臨時手忙腳亂。',takes:[],status:null,memos:[]},
+      {id:6,type:'A-roll',speaker:'A',scene:'A 點頭補充，語氣帶一點「這個真的很多人忘記」的感覺，眼睛稍微瞇起來。',vo:'A：還有確認交通方式也很重要，可以先討論好是自己去還是一起出發。',takes:[],status:null,memos:[]},
+      {id:7,type:'A-roll',speaker:'B',scene:'B 身體微微前傾，表情認真起來，語氣從輕鬆轉叮嚀，最後一句加重語氣並指向鏡頭。',vo:'B：自己出發的話，一定要確認好路線跟集合時間，多抓一點時間，千萬不要遲到了喔！',takes:[],status:null,memos:[]},
+      {id:8,type:'B-roll',speaker:'',scene:'全身穿搭鏡前直拍，服裝整齊，輕微轉身 360° 展示。或平鋪穿搭組合俯拍亦可，視當天備裝狀況決定。',vo:'',takes:[],status:null,memos:[]},
+      {id:9,type:'A-roll',speaker:'A',scene:'A 面向鏡頭，語氣從輕鬆轉正式，像是突然想到一件很重要的事，停頓半秒再開口。',vo:'A：出外勤當天，也要記得——外勤代表的就是事務所的形象。',takes:[],status:null,memos:[]},
+      {id:10,type:'A-roll',speaker:'B',scene:'B 接話，點頭加重語氣，用「基本的喔」結尾時對鏡頭比個 OK 手勢。',vo:'B：所以要穿著整齊、乾淨，見到客戶主動打招呼，都是基本的。',takes:[],status:null,memos:[]},
+      {id:11,type:'A-roll',speaker:'A',scene:'A 表情輕鬆，但語氣帶點過來人口吻，說到「不要自己猜」時稍微搖一下頭，有畫面。',vo:'A：如果有不確定的事情，一定要先問學長姐，不要自己猜，也不要自行報告。',takes:[],status:null,memos:[]},
+      {id:12,type:'A-roll',speaker:'B',scene:'B 表情稍微誇張一點，像是想到曾經犯過這個錯，語氣帶點玩笑但真心提醒。',vo:'B：外勤結束之後，也不要太快放空！回來之後要記得整理跟回報。',takes:[],status:null,memos:[]},
+      {id:13,type:'A-roll',speaker:'A',scene:'A 用手勢輔助列舉，條列感清楚，最後一項說完微微點頭收尾。',vo:'A：像是整理回來的文件、把重點記下來，如果有還沒完成的事情，也可以主動跟學長姐說。',takes:[],status:null,memos:[]},
+      {id:14,type:'A-roll',speaker:'A',scene:'A 輕鬆一笑，語氣像是鬆一口氣，替這段做個小結。',vo:'A：這樣都會幫助之後的工作更順暢喔！',takes:[],status:null,memos:[]},
+      {id:15,type:'A-roll',speaker:'A',scene:'A 坐直、面向鏡頭，整個人打起精神，結語要有感染力。說完最後一句停頓一秒，讓畫面留白。',vo:'A：第一次出外勤一定都會很緊張，但只要記得微笑、有禮貌，然後仔細觀察學長姐怎麼做事情！多練習幾次就沒問題了！',takes:[],status:null,memos:[]},
+      {id:16,type:'A-roll',speaker:'B',scene:'B 接棒結語，表情燦爛帶互動感，說到「歡迎跟我們分享」時對著鏡頭揮手或比愛心，自然不刻意。',vo:'B：如果你也準備第一次出外勤，記得把這幾點先存起來，還有什麼外勤小技巧，也歡迎跟我們分享！',takes:[],status:null,memos:[]},
+    ]
+  },
+];
+
+let currentProj = 0;
+let expandedId  = null;
+let parsedShots = null;
+
+function getCurrentShots(){ return projects[currentProj].shots; }
+
+// ══ PROJECT SWITCH ══
+function switchProject(idx) {
+  currentProj = parseInt(idx);
+  expandedId  = null;
+  document.getElementById('actorTitle').textContent = projects[currentProj].title;
+  render();
+}
+
+function updateProjSelect() {
+  const sel = document.getElementById('projSelect');
+  const cur = sel.value;
+  sel.innerHTML = projects.map((p,i)=>`<option value="${i}">${p.title}</option>`).join('');
+  sel.value = currentProj;
+}
+
+function renderProjList() {
+  const el = document.getElementById('projList');
+  if (!el) return;
+  el.innerHTML = projects.map((p,i)=>`
+    <div class="proj-list-item">
+      <div class="proj-list-name">${p.title}</div>
+      <div class="proj-list-count">${p.shots.length} cuts</div>
+      <span class="proj-list-del" onclick="deleteProj(${i})">刪除</span>
+    </div>`).join('');
+}
+
+function deleteProj(idx) {
+  if (!confirm(`確定刪除「${projects[idx].title}」？`)) return;
+  projects.splice(idx, 1);
+  if (projects.length === 0) {
+    // 全刪完：建一個空的佔位
+    projects.push({ title:'（無影片）', shots:[] });
+  }
+  currentProj = Math.min(currentProj, projects.length - 1);
+  document.getElementById('actorTitle').textContent = projects[currentProj].title;
+  updateProjSelect();
+  renderProjList();
+  saveData();
+  render();
+}
+
+// ══ RENDER CREW ══
+function render() {
+  const shots = getCurrentShots();
+  const proj  = projects[currentProj];
+  const list  = document.getElementById('shotList');
+  list.innerHTML = '';
+
+  // 備註區塊
+  if (proj.note) {
+    const noteEl = document.createElement('div');
+    noteEl.className = 'prep-note';
+    noteEl.innerHTML = `<div class="prep-note-label">📋 拍攝準備</div><div class="prep-note-text">${proj.note.replace(/\n/g,'<br>')}</div>`;
+    list.appendChild(noteEl);
+  }
+
+  if (shots.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:32px 16px;text-align:center;color:var(--muted);font-size:13px';
+    empty.innerHTML = '尚無腳本<br><span style="font-size:11px;font-family:var(--mono)">請到「匯入」tab 貼上腳本</span>';
+    list.appendChild(empty);
+    updateProgress(); return;
+  }
+  shots.forEach(s => {
+    const isA  = s.type === 'A-roll';
+    const card = document.createElement('div');
+    card.className = ['shot-card', isA?'aroll':'broll', s.status?`status-${s.status}`:'', expandedId===s.id?'expanded':''].filter(Boolean).join(' ');
+    card.innerHTML = buildCard(s);
+    list.appendChild(card);
+    card.querySelector('.card-header').addEventListener('click', ()=>toggleExpand(s.id));
+  });
+  updateProgress();
+}
+
+function buildCard(s) {
+  const shots = getCurrentShots();
+  const isA   = s.type === 'A-roll';
+  const statusBadge = s.status
+    ? `<span class="status-pill sp-${s.status}">${s.status==='best'?'★ BEST':s.status==='ok'?'✓ OK':'✕ NG'}</span>` : '';
+  const dots = s.takes.map(t=>`<div class="take-dot ${t.type}"></div>`).join('');
+
+  // take list
+  const takeList = s.takes.length ? `<div class="take-list">${
+    s.takes.map((t,i)=>{
+      const badge = t.type==='best'?'BEST':t.type==='ok'?'OK':'NG';
+      const clip  = t.type==='ok'&&t.clip ? `<span class="tr-clip">${t.clip}</span>` : '';
+      return `<div class="take-row ${t.type}"><span class="tr-num">T${i+1}</span><span class="tr-badge ${t.type}">${badge}</span>${clip}<button class="tr-del" onclick="deleteTake(${s.id},${i})">✕</button></div>`;
+    }).join('')
+  }</div>` : '';
+
+  const memos = s.memos.map(m=>`<div class="memo-item"><span class="m-text">${m.text}</span><span class="m-time">${m.time}</span></div>`).join('');
+  const preview = s.vo ? s.vo.replace(/^[AB]：/,'') : s.scene;
+
+  // slate: next take number
+  const nextTake = s.takes.length + 1;
+  const slateHint = `<div class="slate-hint"><span class="sh-icon">📢</span>請喊：C${String(s.id).padStart(2,'0')} Take ${nextTake}</div>`;
+
+  const voBlock = s.vo ? `<div class="vo-block"><div class="block-label">VO 口白</div><div class="vo-text" contenteditable="true" onblur="saveField(${s.id},'vo',this)">${s.vo}</div></div>` : '';
+
+  return `
+    <div class="card-header">
+      <span class="cut-num">C${String(s.id).padStart(2,'0')}</span>
+      ${s.speaker ? `<span class="speaker-badge">${s.speaker}</span>` : ''}
+      <span class="type-badge">${s.type}</span>
+      <span class="card-preview">${preview}</span>
+      ${statusBadge}
+    </div>
+    <div class="card-body">
+      ${slateHint}
+      <div class="scene-block"><div class="block-label">畫面描述</div><div class="scene-text" contenteditable="true" onblur="saveField(${s.id},'scene',this)">${s.scene}</div></div>
+      ${voBlock}
+      <div class="take-count-row">
+        <span class="take-counter">Take ${s.takes.length}</span>
+        <div class="take-dots">${dots}</div>
+      </div>
+      ${takeList}
+      <div class="take-actions">
+        <button class="take-btn btn-best" onclick="addTake(${s.id},'best')"><span class="tb-icon">★</span><span class="tb-label">BEST</span><span class="tb-sub">整段可用</span></button>
+        <button class="take-btn btn-ok"   onclick="addTake(${s.id},'ok')"><span class="tb-icon">✓</span><span class="tb-label">OK</span><span class="tb-sub">片段可用</span></button>
+        <button class="take-btn btn-ng"   onclick="addTake(${s.id},'ng')"><span class="tb-icon">✕</span><span class="tb-label">NG</span><span class="tb-sub">整段不用</span></button>
+      </div>
+      <button class="memo-btn" onclick="addMemo(${s.id})">＋ 加現場備忘</button>
+      ${memos ? `<div class="memo-list">${memos}</div>` : ''}
+    </div>`;
+}
+
+function deleteTake(id, idx) {
+  event.stopPropagation();
+  const s = getCurrentShots().find(x=>x.id===id);
+  s.takes.splice(idx, 1);
+  // 重新計算狀態
+  if (s.takes.length === 0) s.status = null;
+  else if (s.takes.some(t=>t.type==='best')) s.status = 'best';
+  else if (s.takes.some(t=>t.type==='ok'))   s.status = 'ok';
+  else s.status = 'ng';
+  saveData(); showSync(); expandedId = id; render();
+}
+
+function toggleExpand(id) { expandedId = expandedId===id?null:id; render(); }
+
+function addTake(id, type) {
+  event.stopPropagation();
+  const s = getCurrentShots().find(x=>x.id===id);
+  let clip = '';
+  if (type==='ok') clip = prompt('可用片段說明（例如：0:02–0:05，或「前半段」）：') || '';
+  s.takes.push({type, clip});
+  s.status = s.takes.some(t=>t.type==='best') ? 'best' : s.takes.some(t=>t.type==='ok') ? 'ok' : 'ng';
+  saveData(); showSync(); expandedId = id; render();
+}
+
+function saveField(id, field, el) {
+  getCurrentShots().find(x=>x.id===id)[field] = el.innerText.trim();
+  saveData(); showSync();
+}
+
+function addMemo(id) {
+  event.stopPropagation();
+  const s = getCurrentShots().find(x=>x.id===id);
+  const text = prompt('現場備忘：');
+  if (text && text.trim()) {
+    const now = new Date();
+    s.memos.push({text:text.trim(), time:`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`});
+    saveData(); showSync(); expandedId = id; render();
+  }
+}
+
+function updateProgress() {
+  const shots = getCurrentShots();
+  const done  = shots.filter(s=>s.status==='ok'||s.status==='best').length;
+  document.getElementById('progressFill').style.width  = shots.length ? Math.round(done/shots.length*100)+'%' : '0%';
+  document.getElementById('progressLabel').textContent = `${done}/${shots.length}`;
+}
+
+// ══ ACTOR MULTI-PROJ ══
+let actorProjects = null; // 演員稿模式下的獨立資料
+let actorCurrent  = 0;
+
+function renderActor(projOverride) {
+  const data   = actorProjects || projects;
+  const idx    = projOverride !== undefined ? projOverride : (actorProjects ? actorCurrent : currentProj);
+  const proj   = data[idx];
+  const shots  = proj ? proj.shots : [];
+  const bar    = document.getElementById('actorProjBar');
+
+  // proj bar：多支時顯示
+  if (data.length > 1) {
+    bar.style.display = 'flex';
+    bar.innerHTML = data.map((p,i) =>
+      `<div class="actor-proj-tab${i===idx?' active':''}" onclick="switchActorProj(${i})">${p.title}</div>`
+    ).join('');
+  } else {
+    bar.style.display = 'none';
+  }
+
+  document.getElementById('actorTitle').textContent = proj ? proj.title : '';
+
+  if (!shots.length) {
+    document.getElementById('actorList').innerHTML = '<div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:13px">尚無腳本</div>';
+    return;
+  }
+  document.getElementById('actorList').innerHTML = shots.map((s,i) => {
+    const isBroll  = s.type==='B-roll';
+    const divider  = i>0 ? `<div class="actor-divider"><span>C${String(shots[i-1].id).padStart(2,'00')} ↓</span></div>` : '';
+    const voSection = s.vo ? `<div class="actor-vo-section"><div class="actor-vo-label">VO 口白</div><div class="actor-vo-text">${s.vo}</div></div>` : '';
+    return `${divider}
+      <div class="actor-card${isBroll?' broll':''}">
+        <div class="actor-card-header">
+          <span class="actor-cut-num">C${String(s.id).padStart(2,'0')}</span>
+          <span class="actor-type-badge">${s.type}</span>
+        </div>
+        <div class="actor-scene-section"><div class="actor-scene-label">畫面</div><div class="actor-scene-text">${s.scene}</div></div>
+        ${voSection}
+      </div>`;
+  }).join('');
+}
+
+function switchActorProj(idx) {
+  actorCurrent = idx;
+  renderActor(idx);
+  document.getElementById('view-actor').scrollTop = 0;
+  window.scrollTo(0,0);
+}
+
+// ══ VIEW SWITCH ══
+function switchView(name, tabEl) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('bnav-'+name)?.classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+  else { const idx={shots:0,actor:1,import:2,export:3}[name]; if(idx!==undefined) document.querySelectorAll('.tab')[idx].classList.add('active'); }
+  if (name==='actor')  renderActor();
+  if (name==='export') renderExport();
+  if (name==='import') renderProjList();
+}
+
+// ══ IMPORT ══
+let parsedNote = '';
+
+// RFC4180 TSV parser：支援 Sheets 斷行格子（"..." 包覆）
+function parseTSV(raw) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i], nx = raw[i+1];
+    if (inQ) {
+      if (ch === '"' && nx === '"') { field += '"'; i++; }        // escaped quote
+      else if (ch === '"') { inQ = false; }                       // end quote
+      else { field += ch; }                                        // content (including \n)
+    } else {
+      if (ch === '"') { inQ = true; }
+      else if (ch === '\t') { row.push(field.trim()); field = ''; }
+      else if (ch === '\n') { row.push(field.trim()); rows.push(row); row = []; field = ''; }
+      else { field += ch; }
+    }
+  }
+  if (field || row.length) { row.push(field.trim()); rows.push(row); }
+  return rows.filter(r => r.some(c => c));
+}
+
+function parseImport() {
+  const raw = document.getElementById('importTextarea').value.trim();
+  if (!raw) { alert('請先貼上內容'); return; }
+
+  const preview    = document.getElementById('importPreview');
+  const confirmBtn = document.getElementById('importConfirmBtn');
+  preview.innerHTML = ''; preview.classList.remove('show');
+  parsedShots = null; parsedNote = '';
+
+  const rows    = parseTSV(raw);
+  const results = [], errors = [];
+
+  rows.forEach((cols, i) => {
+    // 格式：影片名稱(0), 集數(1), Cut(2), 類型(3), 說話人(4), 畫面描述(5), VO口白(6)
+    if (cols.length < 4) { errors.push(`第 ${i+1} 行欄位不足，略過`); return; }
+    const type    = (cols[3]||'').replace(/\n/g,' ').trim();
+    const speaker = (cols[4]||'').replace(/\n/g,' ').trim();
+    const scene   = (cols[5]||'').replace(/\n/g,'\n').trim();   // 保留換行
+    const vo      = (cols[6]||'').replace(/\n/g,' ').trim();    // VO 保持單行
+    if (!['A-roll','B-roll'].includes(type)) { errors.push(`第 ${i+1} 行類型「${type}」不正確`); return; }
+    results.push({id:results.length+1, type, speaker, scene, vo, takes:[], status:null, memos:[]});
+  });
+
+  if (errors.length) {
+    preview.classList.add('show');
+    preview.innerHTML = errors.map(e=>`<div class="preview-err">⚠ ${e}</div>`).join('');
+  }
+  if (results.length > 0) {
+    parsedShots = results;
+    preview.classList.add('show');
+    preview.innerHTML += `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 0 6px">解析到 ${results.length} 個 Cut：</div>` +
+      results.map(s=>`<div class="preview-row"><span class="pr-cut ${s.type==='A-roll'?'a':'b'}">C${String(s.id).padStart(2,'0')}</span><span class="pr-type">${s.type}</span><span class="pr-vo">${s.vo||s.scene||'（無內容）'}</span></div>`).join('');
+    confirmBtn.style.display = 'block';
+  }
+}
+
+function confirmImport() {
+  if (!parsedShots||parsedShots.length===0) return;
+  const titleInput = document.getElementById('importTitle').value.trim();
+  const noteInput  = document.getElementById('importNote').value.trim();
+  if (!titleInput) { alert('請先填寫主題名稱'); document.getElementById('importTitle').focus(); return; }
+  if (!confirm(`確定新增「${titleInput}」？\n共 ${parsedShots.length} 個 Cut`)) return;
+  projects.push({ title: titleInput, note: noteInput, shots: parsedShots });
+  currentProj = projects.length - 1;
+  expandedId  = null;
+  parsedShots = null; parsedNote = '';
+  document.getElementById('importTitle').value = '';
+  document.getElementById('importNote').value  = '';
+  document.getElementById('importTextarea').value = '';
+  document.getElementById('importPreview').classList.remove('show');
+  document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('importConfirmBtn').style.display = 'none';
+  document.getElementById('actorTitle').textContent = projects[currentProj].title;
+  updateProjSelect();
+  renderProjList();
+  saveData(); showSync();
+  switchView('shots');
+  render();
+  alert(`✓ 已新增「${projects[currentProj].title}」，共 ${getCurrentShots().length} 個 Cut`);
+}
+
+// ══ EXPORT ══
+let exportSelected = new Set();
+
+function renderExport() {
+  // 預設勾選當前影片
+  if (exportSelected.size === 0) exportSelected.add(currentProj);
+
+  const cl = document.getElementById('exportChecklist');
+  cl.innerHTML = projects.map((p,i) => {
+    const done = p.shots.filter(s=>s.status==='ok'||s.status==='best').length;
+    const checked = exportSelected.has(i);
+    return `<div class="export-check-row${checked?' checked':''}" onclick="toggleExportSel(${i})">
+      <div class="export-check-box">${checked?'✓':''}</div>
+      <div class="export-check-name">${p.title}</div>
+      <div class="export-check-meta">${done}/${p.shots.length} cuts</div>
+    </div>`;
+  }).join('');
+
+  updateExportButtons();
+}
+
+function toggleExportSel(idx) {
+  if (exportSelected.has(idx)) exportSelected.delete(idx);
+  else exportSelected.add(idx);
+  renderExport();
+}
+
+function updateExportButtons() {
+  const count   = exportSelected.size;
+  const tsvBtn  = document.getElementById('exportTsvBtn');
+  const actBtn  = document.getElementById('exportActorBtn');
+  const prevCard= document.getElementById('exportPreviewCard');
+  document.getElementById('exportSelCount').textContent = `已選 ${count} 支`;
+
+  if (count === 0) {
+    tsvBtn.style.display = actBtn.style.display = 'none';
+    prevCard.style.display = 'none';
+    return;
+  }
+  tsvBtn.style.display = actBtn.style.display = 'block';
+
+  // 預覽：只顯示單支的時候才展開
+  if (count === 1) {
+    const idx   = [...exportSelected][0];
+    const shots = projects[idx].shots;
+    const done  = shots.filter(s=>s.status==='ok'||s.status==='best').length;
+    const now   = new Date();
+    document.getElementById('exportDate').textContent = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    document.getElementById('exportStat').textContent = `${done}/${shots.length}`;
+    document.getElementById('exportBody').innerHTML   = buildExportBody(shots);
+    prevCard.style.display = 'block';
+  } else {
+    prevCard.style.display = 'none';
+  }
+}
+
+function buildExportBody(shots) {
+  return shots.map(s=>{
+    const isA   = s.type==='A-roll';
+    const badge = s.status?(s.status==='best'?'★ BEST':s.status==='ok'?'✓ OK':'✕ NG'):'— 未拍';
+    const bc    = s.status==='best'?'color:var(--best)':s.status==='ok'?'color:var(--ok)':s.status==='ng'?'color:var(--ng)':'color:var(--muted)';
+    const memo  = s.memos.length?`<div class="er-memo">${s.memos.map(m=>'📝 '+m.text).join('  ')}</div>`:'';
+    return `<div class="export-row">
+      <div class="er-cut ${isA?'a':'b'}">C${String(s.id).padStart(2,'0')}<br><span style="color:var(--muted);font-size:9px;font-family:var(--mono)">${s.type}</span></div>
+      <div class="er-status" style="${bc}">${badge}</div>
+      <div class="er-info"><div class="er-scene">${s.scene}</div>${s.vo?`<div class="er-vo">${s.vo}</div>`:''}${memo}</div>
+    </div>`;
+  }).join('');
+}
+
+function buildTSVForProj(proj) {
+  const hdrs = ['影片','Cut','類型','說話人','VO口白','畫面描述','狀態','Take明細','可用片段','現場備忘'];
+  const rows = proj.shots.map(s=>{
+    const status = s.status==='best'?'BEST':s.status==='ok'?'OK':s.status==='ng'?'NG':'未拍';
+    const detail = s.takes.length===0?'—':s.takes.map((t,i)=>t.type==='best'?`T${i+1}:BEST`:t.type==='ok'?`T${i+1}:OK${t.clip?'('+t.clip+')':''}` :`T${i+1}:NG`).join(' / ');
+    const clips  = s.takes.filter(t=>t.type==='ok'&&t.clip).map((t,i)=>`T${s.takes.indexOf(t)+1}: ${t.clip}`).join(' / ')||'—';
+    const memos  = s.memos.length?s.memos.map(m=>m.text).join(' / '):'—';
+    return [proj.title,`C${String(s.id).padStart(2,'0')}`,s.type,s.speaker||'—',s.vo||'—',s.scene,status,detail,clips,memos].map(v=>String(v).replace(/\t/g,' ')).join('\t');
+  });
+  return rows.join('\n');
+}
+
+function copyTSV() {
+  if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
+  const hdrs = ['影片','Cut','類型','說話人','VO口白','畫面描述','狀態','Take明細','可用片段','現場備忘'].join('\t');
+  const body = [...exportSelected].map(i=>buildTSVForProj(projects[i])).join('\n');
+  const tsv  = hdrs + '\n' + body;
+  navigator.clipboard.writeText(tsv)
+    .then(()=>{ showSync(); alert(`已複製 ${exportSelected.size} 支影片的剪輯指引！\n打開 Google Sheets → 點剪輯指引分頁 A3 → Cmd+V ✓`); })
+    .catch(()=>alert(tsv));
+}
+
+async function copyBackupLink() {
+  const payload = { projects, currentProj };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const base    = window.location.href.split('?')[0];
+  const longUrl = `${base}?restore=${encoded}`;
+
+  let finalUrl = longUrl;
+  try {
+    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+    if (res.ok) finalUrl = (await res.text()).trim();
+  } catch(e) {}
+
+  navigator.clipboard.writeText(finalUrl)
+    .then(()=>{ showSync(); alert(`已複製！\n\n${finalUrl}\n\n用手機打開這個連結，所有腳本資料都在 ✓`); })
+    .catch(()=>alert(finalUrl));
+}
+
+async function copyActorLink() {
+  if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
+  const selected = [...exportSelected].map(i => ({
+    title: projects[i].title,
+    shots: projects[i].shots.map(s => ({ id:s.id, type:s.type, speaker:s.speaker, scene:s.scene, vo:s.vo }))
+  }));
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(selected))));
+  const base    = window.location.href.split('?')[0];
+  const longUrl = `${base}?mode=actor&data=${encoded}`;
+
+  // 用 TinyURL 縮短
+  let finalUrl = longUrl;
+  try {
+    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+    if (res.ok) finalUrl = await res.text();
+  } catch(e) { /* 縮短失敗就用原始連結 */ }
+
+  navigator.clipboard.writeText(finalUrl)
+    .then(()=>{ showSync(); alert(`已複製演員稿連結！\n\n${finalUrl}\n\n傳給演員，手機打開即可切換 ${selected.length} 支腳本`); })
+    .catch(()=>alert(finalUrl));
+}
+
+function showSync() {
+  const el = document.getElementById('syncBadge');
+  el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1800);
+}
+
+// ══ LOCAL STORAGE ══
+const STORAGE_KEY = 'shot-checklist-v1';
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      projects,
+      currentProj,
+    }));
+  } catch(e) { console.warn('儲存失敗', e); }
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!saved.projects || !saved.projects.length) return false;
+    // 把儲存的資料覆蓋回 projects 陣列（保留 reference）
+    projects.length = 0;
+    saved.projects.forEach(p => projects.push(p));
+    currentProj = Math.min(saved.currentProj || 0, projects.length - 1);
+    return true;
+  } catch(e) { console.warn('讀取失敗', e); return false; }
+}
+
+// ══ INIT ══
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const mode   = params.get('mode');
+  const proj   = params.get('proj');
+  const data   = params.get('data');
+
+  if (mode === 'actor') {
+    document.body.classList.add('actor-only');
+    // 從 URL data 還原演員稿資料
+    if (data) {
+      try {
+        actorProjects = JSON.parse(decodeURIComponent(escape(atob(data))));
+        actorCurrent  = 0;
+      } catch(e) { console.warn('data 解析失敗', e); }
+    } else {
+      // 舊版相容：從 localStorage 讀
+      loadData();
+      if (proj !== null) currentProj = Math.min(parseInt(proj), projects.length-1);
+    }
+    renderActor();
+    return;
+  }
+
+  const restore = params.get('restore');
+  if (restore) {
+    try {
+      const saved = JSON.parse(decodeURIComponent(escape(atob(restore))));
+      projects.length = 0;
+      saved.projects.forEach(p => projects.push(p));
+      currentProj = Math.min(saved.currentProj || 0, projects.length - 1);
+      saveData();
+    } catch(e) { console.warn('restore 失敗', e); }
+  }
+
+  // 一般模式
+  const hasStored = loadData();
+  if (proj !== null) currentProj = Math.min(parseInt(proj), projects.length-1);
+  document.getElementById('actorTitle').textContent = projects[currentProj].title;
+  updateProjSelect();
+  render();
+
+  if (hasStored) {
+    const badge = document.getElementById('syncBadge');
+    badge.textContent = '✓ 資料已還原';
+    badge.classList.add('show');
+    setTimeout(()=>{ badge.classList.remove('show'); badge.textContent='✓ 已同步'; }, 2500);
+  }
+})();
+</script>
+</body>
+</html>
