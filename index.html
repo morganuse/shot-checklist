@@ -820,6 +820,8 @@ async function copyBackupLink() {
     .then(()=>{ showSync(); alert(`已複製！\n\n${finalUrl}\n\n用手機打開這個連結，所有腳本資料都在 ✓`); })
     .catch(()=>alert(finalUrl));
 }
+
+async function copyActorLink() {
   if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
   const selected = [...exportSelected].map(i => ({
     title: projects[i].title,
