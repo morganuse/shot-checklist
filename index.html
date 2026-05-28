@@ -345,6 +345,7 @@ body.actor-only .actor-header{padding-top:16px}
     </div>
     <button class="export-btn" id="exportTsvBtn" onclick="copyTSV()" style="display:none">複製剪輯指引（貼進 Google Sheets）</button>
     <button class="export-btn secondary" id="exportActorBtn" onclick="copyActorLink()" style="display:none">複製演員稿連結</button>
+    <button class="export-btn" onclick="copyBackupLink()" style="background:#1a1a1a;margin-top:4px">📲 複製完整備份連結（傳給自己手機用）</button>
   </div>
 </div>
 
@@ -803,7 +804,22 @@ function copyTSV() {
     .catch(()=>alert(tsv));
 }
 
-async function copyActorLink() {
+async function copyBackupLink() {
+  const payload = { projects, currentProj };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const base    = window.location.href.split('?')[0];
+  const longUrl = `${base}?restore=${encoded}`;
+
+  let finalUrl = longUrl;
+  try {
+    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+    if (res.ok) finalUrl = (await res.text()).trim();
+  } catch(e) {}
+
+  navigator.clipboard.writeText(finalUrl)
+    .then(()=>{ showSync(); alert(`已複製！\n\n${finalUrl}\n\n用手機打開這個連結，所有腳本資料都在 ✓`); })
+    .catch(()=>alert(finalUrl));
+}
   if (exportSelected.size === 0) { alert('請先勾選影片'); return; }
   const selected = [...exportSelected].map(i => ({
     title: projects[i].title,
@@ -878,6 +894,17 @@ function loadData() {
     }
     renderActor();
     return;
+  }
+
+  const restore = params.get('restore');
+  if (restore) {
+    try {
+      const saved = JSON.parse(decodeURIComponent(escape(atob(restore))));
+      projects.length = 0;
+      saved.projects.forEach(p => projects.push(p));
+      currentProj = Math.min(saved.currentProj || 0, projects.length - 1);
+      saveData();
+    } catch(e) { console.warn('restore 失敗', e); }
   }
 
   // 一般模式
